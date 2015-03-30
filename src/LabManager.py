@@ -10,7 +10,8 @@ import math
 from http_logging.http_logger import logger
 from utils.envsetup import EnvSetUp
 from utils.git_commands import * 
-
+import ads_to_dataservices
+from ads_to_dataservices import update_status
 
 def get_lab_reqs(lab_src_url, version=None):
 
@@ -49,6 +50,8 @@ def test_lab(vmmgr_ip, port, lab_src_url, version=None):
     TEST_LAB_API_URI = config_spec["VMMANAGER_CONFIG"]["TEST_LAB_URI"]
     url = '%s:%s%s' % (vmmgr_ip, port, TEST_LAB_API_URI)
     logger.debug("url = %s, payload = %s" % (url, str(payload)))
+    if type(ads_to_dataservices.lab_id_deployed) is int: 			
+    	update_status(ads_to_dataservices.lab_id_deployed,2)
 
     exception_str = ""
     for i in (1,2,4,8,16):

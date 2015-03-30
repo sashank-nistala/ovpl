@@ -16,11 +16,14 @@ import requests
 from exceptions import Exception
 from http_logging.http_logger import logger
 from State import State
-
+from adapters.VMUtils import convert_to_megs
+from ads_to_dataservices import *
+import ads_to_dataservices
 #Globals
 CREATE_PATH = "/api/1.0/vm/create"
 DESTROY_PATH = "/api/1.0/vm/destroy"
 
+labs_id=0
 
 class VMPool:
     """ Manages a pool of VMs or VMProxy's """
@@ -44,7 +47,7 @@ class VMPool:
         # vm_spec is a json string
         # Allocate a vm_id: not required as platform adapter will allocate it.
         # Invoke platform adapter server (POST)
-
+	#print type(lab_spec)
         def construct_state():
             return {
                 "lab_spec": lab_spec,
@@ -78,9 +81,9 @@ class VMPool:
                              (self.vmpool_id, self.vm_description, self.adapter_ip, self.adapter_port, self.create_path, self.destroy_path))
 
         adapter_url = "%s:%s%s" % (self.adapter_ip, self.adapter_port, self.create_path)
-        payload = {'lab_spec': json.dumps(lab_spec)}
-
-        logger.debug("VMPool: create_vm(); adapter_url = %s, payload = %s" % (adapter_url, str(payload)))
+        payload = {"lab_spec": json.dumps(lab_spec)}
+	
+	logger.debug("VMPool: create_vm(); adapter_url = %s, payload = %s" % (adapter_url, str(payload)))
 
         try:
             result = requests.post(url=adapter_url, data=payload)
@@ -89,7 +92,9 @@ class VMPool:
                 vm_id = result.json()["vm_id"]
                 vm_ip = result.json()["vm_ip"]
                 vmm_port = result.json()["vmm_port"]
-                return construct_state()
+		
+	        
+		return construct_state()
             else:
                 raise Exception("VMPool: create_vm(): Error creating VM: " + result.text)
         except Exception, e:

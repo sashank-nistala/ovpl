@@ -13,7 +13,8 @@ import VMPoolManager
 from State import State
 from http_logging.http_logger import logger
 from utils import git_commands
-
+from ads_to_dataservices import *
+import ads_to_dataservices
 class Controller:
     def __init__(self):
         self.system = State.Instance()
@@ -30,10 +31,25 @@ class Controller:
             #   self.undeploy_lab(lab_id)
             vmpoolmgr = VMPoolManager.VMPoolManager()
             logger.debug("test_lab(); invoking create_vm() on vmpoolmgr")
+	### Feeding static info into labs and labsysteminfo tables 
+	    lab_id=post_labs(lab_spec)
+	    if type(lab_id) is int:	
+		#lsi_id is labsysteminfo.id generated from  posted data
+		lsi_id=post_labsysteminfo(lab_spec,lab_id)
+		ads_to_dataservices.lab_id_deployed=lab_id
+	###	
+	    
             lab_state = vmpoolmgr.create_vm(lab_spec)
             logger.debug("test_lab(): Returned from VMPool = %s" % (str(lab_state)))
             ip = lab_state['vm_info']['vm_ip']
             port = lab_state['vm_info']['vmm_port']
+            vm_id = lab_state['vm_info']['vm_id']
+	### Updating labsystem info table with vm_id, ipaddress	
+	    if type(lab_id) is int:
+		put_labs(lab_spec,lab_id)
+		if type(lsi_id) is int :
+			put_labsysteminfo(lsi_id,vm_id,ip)
+	###
             vmmgrurl = "http://" + ip
             logger.debug("test_lab(): vmmgrurl = %s" % (vmmgrurl))
             try:
@@ -41,6 +57,8 @@ class Controller:
                 if(ret_val):
                     self.update_state(lab_state)
                     logger.info("test_lab(): test succcessful")
+                    if type(ads_to_dataservices.lab_id_deployed) is int: 			
+		    	update_status(ads_to_dataservices.lab_id_deployed,3)
                     return ip
                 else:
                     logger.error("test_lab(); Test failed with error:" + str(ret_str))
