@@ -1,0 +1,10 @@
+{
+	"NUMBER_OF_LOGS":10,
+	"LOG_MESSAGE": "random message",
+	"LOGGER_NAME":"controller",
+	"LOGGING_LEVEL":10,
+	"CONTROLLER_PATH":"../logs/controller.log",
+	"VMMANAGER_PATH":"../logs/vmmanager.log",
+	"ADAPTER_PATH":"../logs/adapter.log",
+	"CLIENT_LOGGING_PATH":"../client"
+}

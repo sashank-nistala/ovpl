@@ -10,6 +10,7 @@
 # http://host-name/api/1.0/execute/<command>
 
 import urlparse
+import __init__
 
 # bunch of tornado imports
 import tornado.httpserver 
@@ -17,11 +18,12 @@ import tornado.ioloop
 import tornado.options 
 import tornado.web
 from tornado.options import define, options
+from http_logging.http_logger import logger
+from utils.envsetup import EnvSetUp
 
 import VMManager
-import Logging
 
-define("port", default=8089, help="run on the given port", type=int)
+define("port", default=9089, help="run on the given port", type=int)
 
 
 class DiskUsageHandler(tornado.web.RequestHandler):
@@ -58,17 +60,18 @@ class ExecuteHandler(tornado.web.RequestHandler):
 class TestLabHandler(tornado.web.RequestHandler):
     def post(self):
         post_data = dict(urlparse.parse_qsl(self.request.body))
-        Logging.LOGGER.info("VMManagerServer: TestLabHandler: post(): post_data = %s" % str(post_data))
+        logger.info("VMManagerServer: TestLabHandler: post(): post_data = %s" % str(post_data))
         self.write(VMManager.test_lab(post_data['lab_src_url'], post_data.get('version', None)))
 
     def get(self):
-        Logging.LOGGER.info("VMManagerServer: TestLabHandler: get()")
+        logger.info("VMManagerServer: TestLabHandler: get()")
         self.write("Hello World")
 
 
 if __name__ == "__main__":
-    Logging.setup_logging()
-    Logging.LOGGER.info("VMManagerServer: __main()")
+
+    e = EnvSetUp()
+    logger.info("VMManagerServer: __main()")
     tornado.options.parse_command_line()
     app = tornado.web.Application(
         handlers=[

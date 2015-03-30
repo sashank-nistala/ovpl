@@ -19,12 +19,9 @@ __all__ = [
 
 # Standard Library imports
 import re
-import subprocess
 import os
 import shutil
 from exceptions import Exception
-import logging
-from logging.handlers import TimedRotatingFileHandler
 
 # Third party imports
 import netaddr
@@ -35,26 +32,8 @@ import BaseAdapter
 import VMUtils
 from dict2default import dict2default
 from settings import *
-
-
-
-# UGLY DUCK PUNCHING: Backporting check_output from 2.7 to 2.6
-if "check_output" not in dir(subprocess):
-    def f(*popenargs, **kwargs):
-        if 'stdout' in kwargs:
-            raise ValueError('stdout argument not allowed, it will be overridden.')
-        process = subprocess.Popen(stdout=subprocess.PIPE, *popenargs, **kwargs)
-        output, unused_err = process.communicate()
-        retcode = process.poll()
-        if retcode:
-            cmd = kwargs.get("args")
-            if cmd is None:
-                cmd = popenargs[0]
-            raise subprocess.CalledProcessError(retcode, cmd)
-        return output
-    subprocess.check_output = f
-
-
+from utils.git_commands import *
+from http_logging.http_logger import logger
 
 # Globals
 VZCTL = "/usr/sbin/vzctl"
@@ -62,12 +41,9 @@ VZLIST = "/usr/sbin/vzlist -a"
 IP_ADDRESS_REGEX = r"[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}"
 #IP_ADDRESS_REGEX = 
 # "^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$";
-DUMMY_LOGGER = logging.getLogger('DUMMY')
-
 
 #list of IP addressses since we cannot expect vz to know cause it's a dummy
 IP_ADDRESSES = {}
-
 
 class InvalidVMIDException(Exception):
     def __init__(msg):
@@ -76,11 +52,11 @@ class InvalidVMIDException(Exception):
 class DummyAdapter(object):
 
     def test_logging(self):
-        DUMMY_LOGGER.debug("test_logging()")
+        logger.debug("test_logging()")
 
 
     def create_vm(self, lab_spec, vm_id=""):
-        DUMMY_LOGGER.debug("create_vm()")
+        logger.debug("create_vm()")
         """If no vm_id is specified, it is computed using the last two segments of
            an available IP address; vm_spec is an object """
         #if vm_id == "":
@@ -99,7 +75,7 @@ class DummyAdapter(object):
         vm_id = validate_vm_id(vm_id)
         (vm_create_args, vm_set_args) = construct_vzctl_args(lab_spec)
 
-        DUMMY_LOGGER.debug("create_vm(): ip = %s, vm_id = %s, vm_create_args = %s, vm_set_args = %s" % \
+        logger.debug("create_vm(): ip = %s, vm_id = %s, vm_create_args = %s, vm_set_args = %s" % \
                               (ip_address, vm_id, vm_create_args, vm_set_args))
 
         #setup IP ADRESS link so that we can map IP addresses to vm id's later
@@ -116,7 +92,7 @@ class DummyAdapter(object):
     # Function alias
     start_vm = restart_vm
 
-    def init_vm(self, vm_id):
+    def init_vm(self, vm_id, lab_repo_name):
         copy_vm_manager_files(vm_id)
         self.start_vm_manager(vm_id)
       
@@ -133,22 +109,10 @@ class DummyAdapter(object):
 
     def stop_vm(self, vm_id):
         vm_id = validate_vm_id(vm_id)
-        #try:
-        #    subprocess.check_call(VZCTL + " stop " + vm_id, stdout=LOG_FD, stderr=LOG_FD, shell=True)
-        #    return "Success"
-        #except subprocess.CalledProcessError, e:
-        #    CENTOSVZ_LOGGER.error("Error stopping VM: " + str(e))
-        #    return "Failed to stop VM: " + str(e)
 
     def destroy_vm(self, vm_id):
         vm_id = validate_vm_id(vm_id)
         return "Success"
-        #  subprocess.check_call(VZCTL + " stop " + vm_id, stdout=LOG_FD, stderr=LOG_FD, shell=True)
-        #    subprocess.check_call(VZCTL + " destroy " + vm_id, stdout=LOG_FD, stderr=LOG_FD, shell=True)
-        #return "Success"
-        #except subprocess.CalledProcessError, e:
-        #    CENTOSVZ_LOGGER.error("Error destroying VM: " + str(e))
-        #    return "Failed to destroy VM: " + str(e)
 
     def is_running_vm(self, vm_id):
         vm_id = validate_vm_id(vm_id)
@@ -234,11 +198,11 @@ def validate_vm_id(vm_id):
 
 
 def copy_vm_manager_files(vm_id):
-    DUMMY_LOGGER.debug("copy_vm_manager_files(): vm_id = %s" % vm_id)
+    logger.debug("copy_vm_manager_files(): vm_id = %s" % vm_id)
     current_file_path = os.path.dirname(os.path.abspath(__file__))
     src_dir = current_file_path + VM_MANAGER_SRC_DIR
     dest_dir = "%s%s%s" % (VM_ROOT_DIR, vm_id, VM_MANAGER_DEST_DIR)
-    DUMMY_LOGGER.debug("copy_vm_manager_files(): dest_dir = %s, src_dir = %s" % (dest_dir, src_dir))
+    logger.debug("copy_vm_manager_files(): dest_dir = %s, src_dir = %s" % (dest_dir, src_dir))
       
 
 def get_vm_ip( vm_id):

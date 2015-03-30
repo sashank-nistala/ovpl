@@ -1,5 +1,5 @@
 
-import Logging
+from http_logging.http_logger import logger
 from State import State
 
 

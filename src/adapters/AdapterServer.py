@@ -12,15 +12,15 @@ import urllib
 import os.path
 import sys
 import imp
-
+import __init__
 
 import tornado.httpserver 
 import tornado.ioloop 
 import tornado.options 
 import tornado.web
 from tornado.options import define, options
-
-import Logging
+from http_logging.http_logger import logger
+from utils.envsetup import EnvSetUp
 
 define("port", default=8000, help="run on the given port", type=int)
   
@@ -30,22 +30,25 @@ class CreateVMHandler(tornado.web.RequestHandler):
         self.write("Server GET request - Success")
 
     def post(self):
-        Logger.debug("post()")
+        logger.debug("post()")
         post_data = dict(urlparse.parse_qsl(self.request.body))
-        Logger.debug("post(); post_data = %s" % post_data)
+        logger.debug("post(); post_data = %s" % post_data)
 
-        vm_id = adapter_instance.create_vm(json.loads(post_data['lab_spec']))
-        Logger.debug("created VM id = " + str(vm_id))
+        lab_spec = json.loads(post_data['lab_spec'])
+        vm_id = adapter_instance.create_vm(lab_spec)
+        logger.debug("created VM id = %s" % str(vm_id))
         
-        (success, result) = adapter_instance.init_vm(vm_id)
+        lab_repo_name = lab_spec['lab_repo_name']
+        logger.debug("lab_repo_name = %s" % lab_repo_name)
+        (success, result) = adapter_instance.init_vm(vm_id, lab_repo_name)
 	
 	if not success:
    	    self.set_status(500)
-	    Logger.debug("sucess status returned False from init_vm")
+	    logger.debug("sucess status returned False from init_vm")
 	else:
-	   Logger.debug("success status returned True form init_vm")
+	   logger.debug("success status returned True from init_vm")
 
-        Logger.debug("init vm result = " + str(result))
+        logger.debug("init vm result = " + str(result))
         self.write(result)
         
 
@@ -69,29 +72,23 @@ class RestartVMHandler(tornado.web.RequestHandler):
 
 if __name__ == "__main__": 
     
-     #create a logger
-    Logging.setup_logging()
-    Logger = Logging.LOGGER
-    Logger.debug("__main__()")
-
+    e = EnvSetUp()
+    logger.debug("__main__()")
     tornado.options.parse_command_line()
 
-
-
     try:
-        current_file_path = os.path.dirname(os.path.abspath(__file__))
-        config_spec = json.loads(open(current_file_path + "/config.json").read())
+        config_spec = json.loads(open(e.get_ovpl_directory_path() + "/config/config.json").read())
     except IOError as e:
-        Logger.error("unable to load config.json. Exception: " + str(e))
+        logger.error("unable to load config.json. Exception: " + str(e))
         raise e
     except  Exception as e:
-        Logger.error("unable to parse config.json. Exception: " + str(e))
+        logger.error("unable to parse config.json. Exception: " + str(e))
         raise e
 
    
 
     #load the adapter class and instantiate the adapter
-    adapter_name = config_spec['ADAPTER_NAME']
+    adapter_name = config_spec['CENTOSVZADAPTER']['ADAPTER_NAME']
     module = __import__(adapter_name)
     AdapterClass = getattr(module, adapter_name)
     adapter_instance = AdapterClass()
@@ -100,14 +97,14 @@ if __name__ == "__main__":
     #make the Adapter log a test message
     adapter_instance.test_logging()
 
-    options.port = config_spec["ADAPTER_PORT"]
+    options.port = config_spec['CENTOSVZADAPTER']["ADAPTER_PORT"]
 
     #endpoints of our API to create, destroy and restart the server
     create_uri = "/api/1.0/vm/create"
     destroy_uri = "/api/1.0/vm/destroy"
     restart_uri = "/api/1.0/vm/restart"
 
-    Logger.debug("__main__() PORT=%s, CreateURI=%s, DestroyURI=%s, RestartURI=%s" % \
+    logger.debug("__main__() PORT=%s, CreateURI=%s, DestroyURI=%s, RestartURI=%s" % \
                           (options.port, create_uri, destroy_uri, restart_uri))
 
     app = tornado.web.Application(

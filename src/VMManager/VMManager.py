@@ -1,6 +1,3 @@
-# Author: Chandan Gupta
-# Contact: chandan@vlabs.ac.in
-
 """ An interface for managing VMs for a selected platform. """
 
 # Run this command for me, please.
@@ -13,64 +10,43 @@
 # to do : handle exceptions
 
 import os
-import subprocess
-import shlex
 import json
-import Logging
+import time
 
+import __init__
+from http_logging.http_logger import logger
 from LabActionRunner import LabActionRunner
-
-GIT_CLONE_LOC = "/root/VMManager/lab-repo-cache/"
-LAB_SPEC_LOC = "/scripts/labspec.json"
-
-class LabSpecInvalid(Exception):
-    def __init__(self, msg):
-        Exception(self, msg)
-
-
-# Backporting check_output from 2.7 to 2.6
-if "check_output" not in dir(subprocess):
-    def f(*popenargs, **kwargs):
-        if 'stdout' in kwargs:
-            raise ValueError('stdout argument not allowed, it will be overridden.')
-        process = subprocess.Popen(stdout=subprocess.PIPE, *popenargs, **kwargs)
-        output, unused_err = process.communicate()
-        retcode = process.poll()
-        if retcode:
-            cmd = kwargs.get("args")
-            if cmd is None:
-                cmd = popenargs[0]
-            raise subprocess.CalledProcessError(retcode, cmd)
-        return output
-    subprocess.check_output = f
+from utils.git_commands import *
+from utils.execute_commands import *
 
 def execute(command):
     # do some validation
     try:
-        Logging.LOGGER.info("Command executed: " + command)
-        return subprocess.check_output(command, stderr=Logging.LOG_FD, shell=True)
+        logger.info("Command executed: " + command)
+        (ret_code, output) = execute_command(command)
+        return output
     except Exception, e:
-        Logging.LOGGER.error("Execution failed: " + str(e))
+        logger.error("Execution failed: " + str(e))
         return "Error executing the command: " + str(e)
 
 def running_time():
-    Logging.LOGGER.info("Command executed: uptime")
+    logger.info("Command executed: uptime")
     return execute("uptime")
 
 def mem_usage():
-    Logging.LOGGER.info("Command executed: free -mg")
+    logger.info("Command executed: free -mg")
     return execute("free -mg")
 
 def disk_usage():
-    Logging.LOGGER.info("Command executed: df -h")
+    logger.info("Command executed: df -h")
     return execute("df -h")
 
 def running_processes():
-    Logging.LOGGER.info("Command executed: ps -e -o command")
+    logger.info("Command executed: ps -e -o command")
     return execute("ps -e -o command")
 
 def cpu_load():
-    Logging.LOGGER.info("Command executed: ps -e -o pcpu")
+    logger.info("Command executed: ps -e -o pcpu")
     return execute("ps -e -o pcpu | awk '{s+=$1} END {print s\"%\"}'")
 
 def test_lab(lab_src_url, version=None):
@@ -81,10 +57,10 @@ def test_lab(lab_src_url, version=None):
     # get the appropriate the actions from lab_spec.json
     # run LabAction Runner
         # instantiate the object
-    from envsetup import EnvSetUp
+    from utils.envsetup import EnvSetUp
     e = EnvSetUp()
-    Logging.LOGGER.info("Environment http_proxy = %s" % os.environ["http_proxy"])
-    Logging.LOGGER.info("Environment https_proxy = %s" % os.environ["https_proxy"])
+    logger.info("Environment http_proxy = %s" % os.environ["http_proxy"])
+    logger.info("Environment https_proxy = %s" % os.environ["https_proxy"])
 
     def fill_aptconf():
 
@@ -93,13 +69,12 @@ def test_lab(lab_src_url, version=None):
             https_proxy = os.environ["https_proxy"]
             http_cmd = r'echo "Acquire::http::Proxy \"%s\";"%s'%(http_proxy, '>>/etc/apt/apt.conf')
             https_cmd = r'echo "Acquire::https::Proxy \"%s\";"%s'%(https_proxy, '>>/etc/apt/apt.conf')
-            subprocess.check_call(http_cmd, stdout=Logging.LOG_FD, stderr=Logging.LOG_FD, shell=True)
-            subprocess.check_call(https_cmd, stdout=Logging.LOG_FD, stderr=Logging.LOG_FD, shell=True)
+            (ret_code, output) = execute_command(http_cmd)
+            (ret_code, output) = execute_command(https_cmd)
         except Exception, e:
-            Logging.LOGGER.error("Writing to /etc/apt/apt.conf failed with error: %s" % (str(e)))
+            logger.error("Writing to /etc/apt/apt.conf failed with error: %s" % (str(e)))
             raise e
 
-        
     def get_build_steps_spec(lab_spec):
         return {"build_steps": lab_spec['lab']['build_requirements']['platform']['build_steps']}
 
@@ -112,67 +87,19 @@ def test_lab(lab_src_url, version=None):
     def get_runtime_actions_steps(lab_spec):
         return lab_spec['lab']['runtime_requirements']['platform']['lab_actions']
 
-    def construct_repo_name():
-        repo = lab_src_url.split('/')[-1]
-        repo_name = repo[:-4] if repo[-4:] == ".git" else repo
-        return repo_name
+    logger.info("Starting test_lab")
 
-    def repo_exists(repo_name):
-        return os.path.isdir(GIT_CLONE_LOC+repo_name)
 
-    def clone_repo(repo_name):
-        clone_cmd = "git clone %s %s%s" % (lab_src_url, GIT_CLONE_LOC,repo_name)
-        Logging.LOGGER.debug(clone_cmd)
-        try:
-            subprocess.check_call(clone_cmd, stdout=Logging.LOG_FD, stderr=Logging.LOG_FD, shell=True)
-        except Exception, e:
-            Logging.LOGGER.error("git clone failed for repo %s: %s" % (repo_name, str(e)))
-            raise e
-
-    def pull_repo(repo_name):
-        pull_cmd = "git --git-dir=%s/.git pull" % (GIT_CLONE_LOC + repo_name)
-        Logging.LOGGER.debug(pull_cmd)
-        try:
-            subprocess.check_call(pull_cmd, stdout=Logging.LOG_FD, stderr=Logging.LOG_FD, shell=True)
-        except Exception, e:
-            Logging.LOGGER.error("git pull failed for repo %s: %s" % (repo_name, str(e)))
-            raise e
-
-    def checkout_version(repo_name):
-        if version:
-            try:
-                checkout_cmd = shlex.split("git --git-dir=%s checkout %s" \
-                                    % ((GIT_CLONE_LOC + repo_name), version))
-                Logging.LOGGER.debug(checkout_cmd)
-                subprocess.check_call(checkout_cmd, stdout=Logging.LOG_FD, stderr=Logging.LOG_FD)
-            except Exception, e:
-                Logging.LOGGER.error("git checkout failed for repo %s tag %s: %s" \
-                                    % (repo_name, version, str(e)))
-                raise e
-
-    def get_lab_spec(repo_name):
-        repo_path = GIT_CLONE_LOC + repo_name + LAB_SPEC_LOC
-        if not os.path.exists(repo_path):
-            Logging.LOGGER.error("Lab spec file not found")
-            raise LabSpecInvalid("Lab spec file not found")
-        try:
-            return json.loads(open(repo_path).read())
-        except Exception, e:
-            Logging.LOGGER.error("Lab spec JSON invalid: " + str(e))
-            raise LabSpecInvalid("Lab spec JSON invalid: " + str(e))
-
-    Logging.LOGGER.info("Starting test_lab")
-    fill_aptconf()
-    repo_name = construct_repo_name()
-    if repo_exists(repo_name):
-        pull_repo(repo_name)
-    else:
-        clone_repo(repo_name)
-    checkout_version(repo_name)
-
-    lab_spec = get_lab_spec(repo_name)
     try:
-        os.chdir(GIT_CLONE_LOC+repo_name+"/scripts")
+        fill_aptconf()
+        repo_name = construct_repo_name(lab_src_url)
+        lab_spec = get_lab_spec(repo_name)    
+        spec_path = get_spec_path(repo_name)
+        logger.debug("spec_path: %s" % spec_path)
+        os.chdir(spec_path)
+        logger.debug("Changed to Diretory: %s" % spec_path)
+        logger.debug("CWD: %s" % str(os.getcwd()))
+
         lar = LabActionRunner(get_build_installer_steps_spec(lab_spec))
         lar.run_install_source()
 
@@ -185,14 +112,14 @@ def test_lab(lab_src_url, version=None):
         lar = LabActionRunner(get_runtime_actions_steps(lab_spec))
         lar.run_init_lab()
         lar.run_start_lab()
-        Logging.LOGGER.info("Finishing test_lab: Success")
+        logger.info("Finishing test_lab: Success")
         return "Success"
     except Exception, e:
-        Logging.LOGGER.error("VMManager.test_lab failed: " + str(e))
+        logger.error("VMManager.test_lab failed: " + str(e))
         return "Test lab failed"
 
 
 if __name__ == "__main__":
-    test_lab("https://travula@bitbucket.org/virtual-labs/cse02-programming.git")
+    test_lab("https://bitbucket.org/virtual-labs/cse02-programming.git")
     print cpu_load()
     print mem_usage()
